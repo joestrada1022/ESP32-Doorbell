@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Take Photo</title>
+</head>
+<body>
+    <button id="send">Take Photo</button>
+
+    <script>
+    document.getElementById('send').addEventListener('click', function() {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                var video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+
+                var canvas = document.createElement('canvas');
+                canvas.width = 640;
+                canvas.height = 480;
+                var context = canvas.getContext('2d');
+
+                video.addEventListener('loadeddata', function() {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    video.pause();
+                    stream.getTracks()[0].stop();
+
+                    canvas.toBlob(function(blob) {
+                        var formData = new FormData();
+                        formData.append('photo', blob, 'photo.jpg');
+
+                        fetch('/upload', {
+                            method: 'POST',
+                            body: formData
+                        }).then(response => response.json())
+                          .then(data => {
+                              console.log(data);
+                          })
+                          .catch(error => console.error('Error:', error));
+                    }, 'image/jpeg');
+                }, { once: true });
+            })
+            .catch(function(err) {
+                console.log("An error occurred: " + err);
+            });
+    });
+    </script>
+</body>
+</html>
