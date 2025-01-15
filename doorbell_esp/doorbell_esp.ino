@@ -1,6 +1,4 @@
 #include "esp_camera.h"
-#include "driver/rtc_io.h"
-#include "SPI.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "Base64.h"
@@ -49,9 +47,6 @@ PubSubClient client(espClient);
 #else
 #error "Camera model not selected"
 #endif
-
-// define name of photo to save in flash mem
-#define FILE_PHOTO "/photo.jpg"
 
 void setup_wifi()
 {
@@ -111,17 +106,6 @@ void setup()
   client.setServer(mqtt_broker, 1883);
   client.setBufferSize(8192);
 
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("error mounting flash mem");
-    ESP.restart();
-  }
-  else
-  {
-    delay(500);
-    Serial.println("flash mem mounted successfully");
-  }
-
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -180,68 +164,12 @@ void loop()
 
       if (buttonState == HIGH)
       {
-        // takePhoto();
         publishImage();
-        // digitalWrite(ledPin, HIGH);
       }
     }
   }
 
-  if (buttonState == LOW)
-  {
-    // digitalWrite(ledPin, LOW);
-  }
-
   lastButtonState = reading;
-}
-
-bool checkPhoto(fs::FS &fs)
-{
-  File f_pic = fs.open(FILE_PHOTO);
-  unsigned int pic_sz = f_pic.size();
-  return (pic_sz > 100);
-}
-
-void takePhoto(void)
-{
-  camera_fb_t *fb = NULL;
-  bool ok = 0; // indicates if photo was taken successfully
-
-  do
-  {
-    Serial.println("Taking photo...");
-    fb = esp_camera_fb_get();
-    if (!fb)
-    {
-      Serial.println("photo capture failed");
-      return;
-    }
-
-    // file name
-    Serial.printf("Picture file name: %s\n", FILE_PHOTO);
-    File file = SPIFFS.open(FILE_PHOTO, FILE_WRITE);
-
-    // insert data to file
-    if (!file)
-    {
-      Serial.println("Failed to open file in writing mode");
-    }
-    else
-    {
-      file.write(fb->buf, fb->len); // payload (image), payload length
-      Serial.print("The photo has been saved in ");
-      Serial.print(FILE_PHOTO);
-      Serial.print(" - Size: ");
-      Serial.print(file.size());
-      Serial.println(" bytes");
-    }
-    // close file
-    file.close();
-    esp_camera_fb_return(fb);
-
-    ok = checkPhoto(SPIFFS);
-
-  } while (!ok);
 }
 
 void publishImage()
@@ -252,14 +180,8 @@ void publishImage()
     Serial.println("Camera capture failed");
   }
 
-  // Convert image to Base64
-  String imageBase64 = base64::encode((uint8_t *)fb->buf, fb->len);
-
-  // Release the frame buffer
-  esp_camera_fb_return(fb);
-
   // Publish the Base64 string to the MQTT topic
-  if (client.publish(MQTT_TOPIC, imageBase64.c_str()))
+  if (client.publish(MQTT_TOPIC, (const uint8_t *)fb->buf, fb->len))
   {
     Serial.println("Image sent successfully");
   }
@@ -267,4 +189,7 @@ void publishImage()
   {
     Serial.println("Failed to send image");
   }
+
+  // Release the frame buffer
+  esp_camera_fb_return(fb);
 }
